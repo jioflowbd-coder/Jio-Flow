@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
 const {PGlite}=await import(process.env.PGLITE_MODULE||'@electric-sql/pglite');const db=new PGlite();
 await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,invited_at timestamptz);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;`);
-for(const f of ['001_identity_and_shops.sql','002_crm_foundation.sql','003_account_provisioning.sql'])await db.exec(await readFile(new URL('./supabase/migrations/'+f,import.meta.url),'utf8'));
+for(const f of ['001_identity_and_shops.sql','002_crm_foundation.sql','003_account_provisioning.sql','004_products_customers_followups.sql'])await db.exec(await readFile(new URL('./supabase/migrations/'+f,import.meta.url),'utf8'));
 const creator='11111111-1111-4111-8111-111111111111',owner='22222222-2222-4222-8222-222222222222',admin='33333333-3333-4333-8333-333333333333',agent='44444444-4444-4444-8444-444444444444',owner2='55555555-5555-4555-8555-555555555555',outsider='66666666-6666-4666-8666-666666666666';
 async function identity(id){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated')}
 async function q(sql,params=[]){return (await db.query(sql,params)).rows}
@@ -30,5 +30,34 @@ await identity(agent);assert.equal((await q('select * from public.jf_customers')
 await db.exec('reset role');await db.query("update public.jf_memberships set status='active' where user_id=$1",[agent]);await identity(agent);assert.equal((await q('select * from public.jf_customers')).length,0);
 await db.exec('reset role');await db.query('update auth.users set email_confirmed_at=null where id=$1',[admin]);await identity(admin);assert.equal((await q('select * from public.jf_customers')).length,0);await identity(owner);assert.equal((await q('select * from public.jf_product_costs')).length,1);await db.exec('reset role');await db.query('update public.jf_profiles set active=false where id=$1',[owner]);await identity(owner);assert.equal((await q('select * from public.jf_customers')).length,0);
 await db.exec('reset role');await db.exec('set role anon');await denied('select * from public.jf_profiles');await denied("select public.jf_create_shop('Anonymous')");await denied('select * from public.jf_customers');
-await db.exec('reset role');const versionCount=(await q('select count(*)::int as n from public.jf_schema_versions'))[0].n;assert.equal(versionCount,3);await db.close();
+await db.exec('reset role');const versionCount=(await q('select count(*)::int as n from public.jf_schema_versions'))[0].n;assert.equal(versionCount,4);
+await db.query('update public.jf_profiles set active=true where id=$1',[owner]);await db.query('update auth.users set email_confirmed_at=now() where id=$1',[admin]);await identity(owner);
+const productPayload={name:'A Product',sku:'SKU-004',sale_price:'690.50',unit_cost:'120.25',active:true};
+const savedProduct=(await q('select public.jf_save_product($1,null,$2::jsonb) as id',[shop,JSON.stringify(productPayload)]))[0].id;
+await q('select public.jf_set_product_active($1,$2,false)',[shop,savedProduct]);assert.equal((await q('select active from public.jf_products where id=$1',[savedProduct]))[0].active,false);
+await q('select public.jf_save_product($1,$2,$3::jsonb)',[shop,savedProduct,JSON.stringify({...productPayload,sale_price:'700.00',active:true})]);
+assert.equal(Number((await q('select sale_price from public.jf_products where id=$1',[savedProduct]))[0].sale_price),700);
+await denied('select public.jf_save_product($1,$2,$3::jsonb)',[shop2,savedProduct,JSON.stringify(productPayload)]);
+for(const price of ['-1','NaN','1.234'])await denied('select public.jf_save_product($1,null,$2::jsonb)',[shop,JSON.stringify({...productPayload,sale_price:price})]);
+const customerPayload={full_name:'Saved Customer',phone:'01712345678',source:'facebook',address:'Dhaka'};
+const savedCustomer=(await q('select public.jf_save_customer($1,null,$2::jsonb) as id',[shop,JSON.stringify(customerPayload)]))[0].id;
+assert.equal((await q('select phone from public.jf_customers where id=$1',[savedCustomer]))[0].phone,'+8801712345678');
+const sameCustomer=(await q('select public.jf_save_customer($1,null,$2::jsonb) as id',[shop,JSON.stringify({...customerPayload,phone:'+8801712345678',full_name:'Updated Customer'})]))[0].id;assert.equal(sameCustomer,savedCustomer);
+assert.equal((await q('select count(*)::int as n from public.jf_followups where customer_id=$1',[savedCustomer]))[0].n,1);
+await denied('select public.jf_save_customer($1,null,$2::jsonb)',[shop,JSON.stringify({...customerPayload,permanent:true})]);
+await denied('select public.jf_save_customer($1,null,$2::jsonb)',[shop,JSON.stringify({...customerPayload,assigned_membership_id:'99999999-9999-4999-8999-999999999999'})]);
+await denied("select public.jf_record_followup($1,$2,'callback','busy')",[shop,savedCustomer]);
+await q("select public.jf_record_followup($1,$2,'callback','busy',now()+interval '1 day','Call tomorrow')",[shop,savedCustomer]);
+await q("select public.jf_record_followup($1,$2,'completed','positive',null,'Purchased')",[shop,savedCustomer]);
+assert.equal((await q('select count(*)::int as n from public.jf_notes where customer_id=$1',[savedCustomer]))[0].n,2);
+assert.equal((await q('select callback_at from public.jf_followups where customer_id=$1',[savedCustomer]))[0].callback_at,null);
+assert.ok((await q("select * from public.jf_customer_page($1,'completed','+8801712',0)",[shop])).some(r=>r.id===savedCustomer));
+assert.equal((await q("select * from public.jf_customer_page($1,'callback','+8801712',0)",[shop])).length,0);
+await identity(admin);await denied('select public.jf_save_product($1,null,$2::jsonb)',[shop,JSON.stringify(productPayload)]);
+await db.exec('reset role');await db.query(`update public.jf_memberships set permissions=permissions||'{"products":true,"profit":false}'::jsonb where user_id=$1`,[admin]);await identity(admin);
+await denied('select public.jf_save_product($1,null,$2::jsonb)',[shop,JSON.stringify(productPayload)]);
+const publicProduct={...productPayload,sku:'ADMIN-004'};delete publicProduct.unit_cost;await q('select public.jf_save_product($1,null,$2::jsonb)',[shop,JSON.stringify(publicProduct)]);
+await identity(agent);await denied('select public.jf_save_customer($1,null,$2::jsonb)',[shop,JSON.stringify(customerPayload)]);assert.equal((await q('select * from public.jf_customer_page($1)',[shop])).length,0);
+await db.exec('reset role');await db.exec('set role anon');await denied('select public.jf_save_customer($1,null,$2::jsonb)',[shop,JSON.stringify(customerPayload)]);
+await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');
