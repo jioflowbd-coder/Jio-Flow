@@ -42,7 +42,7 @@ export function createAccountService({env=process.env,fetcher=fetch}={}){
   if(typeof password!=='string'||password&&(password.length<12||password.length>128))throw new RequestError('Initial passwords must contain 12–128 characters.');
   const rid=await rpc('jf_prepare_invitation',{target_shop:input.shop_id,desired_role:input.role,person_name:name,person_email:email,person_phone:String(input.phone||'')});
   // Auth delivers verification mail. Role assignment uses database records only.
-  const invited=await call('/auth/v1/invite?redirect_to='+encodeURIComponent(c.origin+'/online.html'),{method:'POST',key:c.secret,token:c.secret,body:{email,data:{full_name:name}}});
+  const invited=await call('/auth/v1/invite?redirect_to='+encodeURIComponent(c.origin+'/'),{method:'POST',key:c.secret,token:c.secret,body:{email,data:{full_name:name}}});
   const id=invited?.id||invited?.user?.id;if(!uuid.test(id||''))throw new RequestError('Invitation delivery could not be confirmed.',502);
   await rpc('jf_finish_invitation',{request_id:rid,invited_user:id});
   let warning='';
