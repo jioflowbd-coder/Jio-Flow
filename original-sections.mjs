@@ -25,7 +25,7 @@ export function createOriginalSections({client,navigate,onLiveAction=()=>false,o
   try{
    let records={};if(shop&&!['settings','platformsettings','import','profile','shop'].includes(section)){
     const scoped='select=*&shop_id=eq.'+encodeURIComponent(shop.id);
-    const [orders,products,customers]=await Promise.all([client.query('jf_orders',scoped+'&order=created_at.desc&limit=50'),client.query('jf_products',scoped+'&order=created_at.desc&limit=50'),client.query('jf_customers',scoped+'&archived_at=is.null&order=updated_at.desc&limit=50')]);
+    const [orders,products,customers]=await Promise.all([client.query('jf_orders',scoped+'&archived_at=is.null&order=created_at.desc&limit=50'),client.query('jf_products',scoped+'&archived_at=is.null&order=created_at.desc&limit=50'),client.query('jf_customers',scoped+'&archived_at=is.null&order=updated_at.desc&limit=50')]);
     records={orders:orders||[],products:products||[],customers:customers||[],items:[],payments:[],followups:[],costs:[]};
     if(records.orders.length){const ids=records.orders.map(o=>o.id).join(',');for(let offset=0;;offset+=1000){const items=await client.query('jf_order_items',scoped+'&order_id=in.('+ids+')&order=id.asc&limit=1000&offset='+offset);records.items.push(...(items||[]));if(!items||items.length<1000)break}for(let offset=0;;offset+=1000){const payments=await client.query('jf_payments',scoped+'&order_id=in.('+ids+')&order=id.asc&limit=1000&offset='+offset);records.payments.push(...(payments||[]));if(!payments||payments.length<1000)break}}
     if(records.customers.length)records.followups=await client.query('jf_followups',scoped+'&customer_id=in.('+records.customers.map(c=>c.id).join(',')+')&limit=50')||[];

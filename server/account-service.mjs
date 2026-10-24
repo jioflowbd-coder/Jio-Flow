@@ -16,7 +16,7 @@ export function createAccountService({env=process.env,fetcher=fetch}={}){
   if(!response.ok){
    const code=data?.code||data?.error_code;
    const status=response.status===401?401:code==='42501'?403:code==='23505'?409:response.status===429?429:400;
-   const safe=code==='PGRST202'?'Database update 008 is required for account email controls.':code==='over_email_send_rate_limit'||code==='over_request_rate_limit'?'Wait at least one minute before sending another email.':code==='42501'?'Your role does not permit this action.':code==='23505'?'This account or Owner assignment already exists.':code==='P0001'?'Please wait a minute before sending more invitations.':code==='email_exists'||code==='email_address_not_authorized'?'The email invitation could not be sent. Check the address and email delivery configuration.':response.status===429?'Too many requests. Please try again shortly.':path.startsWith('/rest/v1/rpc/')?'Account setup could not be completed. Check migration 003 and your permissions.':'The account request failed. Please check email delivery and try again.';
+   const safe=code==='weak_password'?'Password does not meet the hosted Auth requirements. Ask the Creator to check the minimum password length in Supabase Auth settings.':code==='PGRST202'?'Database update 008 is required for account email controls.':code==='over_email_send_rate_limit'||code==='over_request_rate_limit'?'Wait at least one minute before sending another email.':code==='42501'?'Your role does not permit this action.':code==='23505'?'This account or Owner assignment already exists.':code==='P0001'?'Please wait a minute before sending more invitations.':code==='email_exists'||code==='email_address_not_authorized'?'The email invitation could not be sent. Check the address and email delivery configuration.':response.status===429?'Too many requests. Please try again shortly.':path.startsWith('/rest/v1/rpc/')?'Account setup could not be completed. Check migration 003 and your permissions.':'The account request failed. Please check email delivery and try again.';
    throw new RequestError(safe,status);
   }
   return data;
@@ -64,8 +64,19 @@ export function createAccountService({env=process.env,fetcher=fetch}={}){
   const email=String(input.email||'').trim().toLowerCase(),name=String(input.name||'').trim();
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||!name||name.length>120)throw new RequestError('Enter a valid name and email.');
   const password=input.password||'';
-  if(typeof password!=='string'||password&&(password.length<12||password.length>128))throw new RequestError('Initial passwords must contain 12–128 characters.');
+  if(typeof password!=='string'||password&&(password.length<6||password.length>128))throw new RequestError('Initial passwords must contain 6–128 characters.');
   const rid=await rpc('jf_prepare_invitation',{target_shop:input.shop_id,desired_role:input.role,person_name:name,person_email:email,person_phone:String(input.phone||'')});
+  if(input.role==='agent'){
+   const jio=String(input.jio_id||'').trim();
+   if(!/^[A-Za-z0-9_-]{3,50}$/.test(jio)||!password)throw new RequestError('Enter a unique Jio ID (3–50 letters, numbers, _ or -) and a password of at least 6 characters.');
+   await rpc('jf_validate_agent_id',{jio_id:jio});
+   // Agents are managed identities. No invitation or verification email is sent.
+   // Database flag prevents treating this provider confirmation as verified mail.
+   const created=await call('/auth/v1/admin/users',{method:'POST',key:c.secret,token:c.secret,body:{email,password,email_confirm:true,user_metadata:{full_name:name}}});
+   const id=created?.id||created?.user?.id;if(!uuid.test(id||''))throw new RequestError('Agent identity could not be created.',502);
+   try{await rpc('jf_finish_agent',{request_id:rid,agent_user:id,jio_id:jio})}catch(error){try{await call('/auth/v1/admin/users/'+id,{method:'DELETE',key:c.secret,token:c.secret})}catch{}throw error}
+   return {user_id:id,message:'Agent created. Every new login requires approval from an Admin, Owner or Creator.'};
+  }
   // Auth delivers verification mail. Role assignment uses database records only.
   const invited=await call('/auth/v1/invite?redirect_to='+encodeURIComponent(c.origin+'/'),{method:'POST',key:c.secret,token:c.secret,body:{email,data:{full_name:name}}});
   const id=invited?.id||invited?.user?.id;if(!uuid.test(id||''))throw new RequestError('Invitation delivery could not be confirmed.',502);

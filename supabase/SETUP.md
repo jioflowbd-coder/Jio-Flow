@@ -24,3 +24,19 @@ customer/order tables are exposed. No CRM customer/order data is exposed here.
 The publishable key supplied in conversation is frontend configuration. Keep
 Supabase secrets/service_role keys only in the deployment secret store. Never
 put browser backups, passwords, sessions or secret keys into GitHub.
+
+## Online login test page
+
+After 001 is executed and the trusted Creator profile is inserted, deploy
+online.html, online.js, online-client.mjs, online.css and updated build.mjs.
+Visit /online.html. Use the password set in Supabase Authentication, not the
+old browser-demo password unless you deliberately set the same password.
+This is a staged online account viewer; it does not enable CRM writes or import
+browser data. Agents cannot enter this portal until their device access flow is
+implemented. Owners/Admins see only rows allowed by PostgreSQL policies.
+The existing /index.html remains the browser demo during this migration.
+
+Sessions are per browser tab session, contain Supabase tokens (not passwords),
+and refresh using the Auth API. Login also reads the server profile; missing,
+inactive or removed profiles are rejected. Run node tests-online.mjs for mocked
+Auth/API tests. A real cross-device login still needs user verification.
