@@ -1,3 +1,4 @@
+import {bindCustomerImport} from './live-customer-import.mjs';
 const supported=new Set(['dashboard','products','customers','followups','permanent','team','profile','shop','orders','new','import','courier','profit','agentreports','settings','platformsettings']);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createOriginalSections({client,navigate,onLiveAction=()=>false,onReady=()=>{},bridge=()=>window.JioFlowOriginalViews}){
@@ -16,7 +17,7 @@ export function createOriginalSections({client,navigate,onLiveAction=()=>false,o
   root.querySelectorAll('[data-original-tab]').forEach(b=>b.onclick=()=>update('tab',b.dataset.originalTab));
   root.querySelectorAll('[data-original-filters]').forEach(b=>b.onclick=()=>update('filters'));
   root.querySelectorAll('[data-original-search]').forEach(input=>{input.onchange=()=>update('search',input.value);input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();update('search',input.value)}}});
-  root.querySelectorAll('[data-original-form]').forEach(form=>form.onsubmit=e=>e.preventDefault());onReady(root,viewContext);
+  root.querySelectorAll('[data-original-form]').forEach(form=>form.onsubmit=e=>e.preventDefault());onReady(root,viewContext);bindCustomerImport(root,viewContext,client);
  }
  return {supports:section=>supported.has(section),clear(){generation++},async mount({root,section,shop,profile,shops,profiles,members,accountRole,canFinance}){
   const current=++generation;if(!supported.has(section))return;
