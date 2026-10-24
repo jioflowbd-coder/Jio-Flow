@@ -5,6 +5,11 @@ const profile={id:'creator',platform_role:'creator',full_name:'Creator',active:t
 const input={profile,shop,shops:[shop],profiles:[profile],members:[],records,accountRole:'Creator'};
 for(const route of ['dashboard','products','customers','followups','permanent','team','orders','new','import','courier','profit','agentreports','settings','platformsettings','profile','shop']){
  const html=context.JioFlowOriginalViews.render(route,input);document.getElementById('app').innerHTML=html;assert.ok(html.includes('original-restored-view'),route);assert.equal(document.querySelector('[onclick]'),null,route);assert.equal(document.querySelector('[onsubmit]'),null,route);assert.equal(document.querySelector('script'),null,route);assert.equal(html.includes('This section is being connected to your workspace.'),false,route);assert.equal(html.includes('Karim Hasan'),false,route);
+ if(['dashboard','customers','followups','permanent','orders','courier','agentreports'].includes(route)){
+  const top=document.querySelector('.original-restored-view .stats');assert.ok(top,route+' summary');
+  const labels=[...top.children].map(el=>(el.querySelector('.label,.tile-label')?.textContent||'').replace('↗','').trim());
+  assert.ok(labels.includes('Unassigned'),route+' Unassigned');assert.ok(labels.indexOf('Completed')>=0&&labels.indexOf('Completed')<3,route+' Completed at top');
+ }
  if(route==='orders'){assert.ok(html.includes('REAL-001'));assert.ok(html.includes('Real Customer'));assert.ok(document.querySelector('[data-original-tab="Confirmed"]'));const filtered=context.JioFlowOriginalViews.interact('tab','Cancelled');assert.equal(filtered.includes('REAL-001'),false)}
  if(route==='new'){assert.ok(document.querySelector('#order-form'));assert.ok(document.querySelector('#order-phone').disabled)}
 }

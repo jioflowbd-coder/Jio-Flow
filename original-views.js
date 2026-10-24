@@ -749,6 +749,23 @@ function renderOriginal(section,context,reset=true){
  page=section==='followups'?'customers':section;
  const views={dashboard:dashboardView,products:productsView,customers:customersView,followups:customersView,permanent:customersView,team:teamView,profile:profileView,shop:storesView,orders:ordersView,new:newOrderView,import:importView,courier:courierView,profit:profitView,agentreports:agentReportsView,settings:settingsView,platformsettings:platformSettingsView};
  let html=(views[section]||ordersView)();const holder=document.createElement('div');holder.innerHTML=html;
+ // Keep queue and completion summaries visible before secondary metrics.
+ if(['dashboard','customers','followups','permanent','orders','courier','agentreports'].includes(section)){
+  let summary=holder.querySelector('.stats');
+  if(!summary){summary=document.createElement('div');summary.className='stats section-overview';holder.prepend(summary)}
+  const cards=()=>[...holder.querySelectorAll('.metric-tile,.insight-tile,.overview-tile')];
+  const label=el=>(el.querySelector('.label,.tile-label')?.textContent||'').replace('↗','').trim();
+  let completed=cards().find(el=>/^Completed$/i.test(label(el)));
+  if(!completed){
+   const delivery=['orders','courier'].includes(section),value=delivery?visibleOrders().filter(inRange).filter(o=>o.status==='Delivered').length:visibleCustomers().filter(c=>c.status==='Completed').length;
+   const fragment=document.createElement('div');fragment.innerHTML=summaryTile('Completed',value,delivery?'Delivered orders · loaded records':'Completed follow-ups · loaded profiles');completed=fragment.firstElementChild;
+  }
+  const confirmed=[...summary.children].find(el=>/^Confirmed( Orders| customers)?$/i.test(label(el)));
+  if(confirmed){summary.prepend(confirmed);confirmed.after(completed)}else summary.prepend(completed);
+  let unassigned=cards().find(el=>/^Unassigned$/i.test(label(el)));
+  if(!unassigned){const fragment=document.createElement('div');fragment.innerHTML=summaryTile('Unassigned',visibleCustomers().filter(c=>!c.agent).length,'Customers without an agent · loaded profiles',"nav('customers')");unassigned=fragment.firstElementChild}
+  completed.after(unassigned);
+ }
  const heading=holder.querySelector('.heading'),headingActions=heading?.querySelector('.row');if(headingActions){headingActions.classList.add('original-header-actions');heading.replaceWith(headingActions)}else heading?.remove();
  holder.querySelectorAll('script,iframe').forEach(e=>e.remove());holder.querySelectorAll('img').forEach(img=>{if(!img.getAttribute('src')){const span=document.createElement('span');span.className='avatar';span.innerHTML=ico('products');img.replaceWith(span)}});
  holder.querySelectorAll('*').forEach(el=>{

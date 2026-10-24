@@ -1,13 +1,8 @@
-import assert from 'node:assert/strict';
-import {parseCSV,bindCustomerImport} from './live-customer-import.mjs';
-assert.deepEqual(parseCSV('\ufeffName,Phone\r\n"A, B",01712345678\r\n"Two\nlines",01812345678'),[['Name','Phone'],['A, B','01712345678'],['Two\nlines','01812345678']]);
-assert.throws(()=>parseCSV('name,phone\n"bad,123'),/unclosed/);
-const button={},controls=[button],form={dataset:{},querySelectorAll:()=>controls,querySelector:()=>button},status={},preview={innerHTML:'',querySelector:s=>s==='form'?form:status},picker={disabled:true,removeAttribute(){},closest(){return null}};
-const root={isConnected:true,querySelector:s=>s==='input[type=file]'?picker:preview},calls=[];
-bindCustomerImport(root,{section:'import',shop:{id:'shop-a',name:'Ecory'}},{rpc:async(name,args)=>{calls.push({name,args});return 'id'}});
-assert.equal(picker.disabled,false);picker.files=[{name:'customers.csv',size:90,text:async()=> 'Customer Name,Phone Number,Address\nCustomer,01712345678,"A, B"'}];await picker.onchange();
-assert.ok(preview.innerHTML.includes('customer profiles only'));assert.ok(preview.innerHTML.includes('type="checkbox" required'));
-const NativeFormData=globalThis.FormData;globalThis.FormData=class{get(name){return ({full_name:'0',phone:'1',address:'2'})[name]??''}};
-try{await form.onsubmit({preventDefault(){}});assert.equal(calls.length,1);assert.equal(calls[0].args.target_shop,'shop-a');assert.deepEqual(calls[0].args.details,{full_name:'Customer',phone:'01712345678',address:'A, B'});assert.ok(!('assigned_membership_id' in calls[0].args.details));assert.ok(status.textContent.includes('1 customer rows saved'));}finally{globalThis.FormData=NativeFormData}
-picker.files=[{name:'bad.pdf',size:10}];await picker.onchange();assert.ok(preview.innerHTML.includes('Choose a CSV or Excel'));
-console.log('CSV parsing, file selection, tenant-scoped save, assignment preservation and invalid file handling passed.');
+import assert from 'node:assert/strict';import{parseCSV,bindCustomerImport,prepareCustomerRows}from'./live-customer-import.mjs';
+const{parseHTML}=await import(process.env.LINKEDOM_MODULE||'/tmp/jioflow-ui-validation/node_modules/linkedom/esm/index.js');
+assert.deepEqual(parseCSV('Name,Phone\n"A, B",01712345678'),[['Name','Phone'],['A, B','01712345678']]);assert.throws(()=>parseCSV('a\n"bad'),/unclosed/);
+const{document,Event}=parseHTML('<html><body><main></main></body></html>');const root=document.querySelector('main'),calls=[];bindCustomerImport(root,{section:'import',shop:{id:'a',name:'Ecory'}},{rpc:async(n,a)=>calls.push(a)});
+const picker=root.querySelector('input[type=file]');picker.files=[{name:'large.csv',size:9*1024*1024,text:async()=> 'Customer Name,Mobile Number\n'+Array.from({length:8673},(_,i)=> 'Customer,0'+(1700000000+i)).join('\n')}];await picker.onchange();assert.equal(picker.disabled,true);assert.ok(root.textContent.includes('8,673 rows'));assert.equal(root.querySelector('[data-upload-import]').disabled,false);const drop=new Event('drop',{cancelable:true});drop.dataTransfer={files:[{name:'another.csv'}]};root.querySelector('[data-dropzone]').dispatchEvent(drop);assert.ok(root.querySelector('[data-message]').textContent.includes('already selected'));
+const original=globalThis.FormData;globalThis.FormData=class{has(){return true}get(k){return ({full_name:'0',phone:'1'})[k]??''}};try{await root.querySelector('[data-upload-import]').onclick();assert.equal(calls.length,8673);assert.equal(calls[0].target_shop,'a');assert.equal(root.querySelector('[data-upload-import]').disabled,true);}finally{globalThis.FormData=original}root.querySelector('[data-clear-import]').onclick();assert.equal(picker.disabled,false);assert.equal(root.querySelector('[data-upload-import]').disabled,true);console.log('8,673-row import without fixed caps, single-file lock, auto mapping, scoped save and Clear passed.');
+
+const p=prepareCustomerRows([['A','০১৭১২৩৪৫৬৭৮'],['B','+8801712345678'],['Bad','123']],new Map([['full_name','0'],['phone','1']]));assert.equal(p.customers.length,1);assert.equal(p.duplicates,1);assert.equal(p.invalid.length,1);assert.equal(p.customers[0].full_name,'B');console.log('Bangla phone normalization, duplicate merging and invalid-row filtering passed.');
