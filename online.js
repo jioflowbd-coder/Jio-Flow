@@ -1,3 +1,4 @@
+import {bindLiveOrders} from './online-orders.mjs';
 import {createOriginalSections} from './original-sections.mjs';
 import {createAccountActions} from './account-actions.mjs';
 import {workspaceShell,platformDashboard,shopDashboard,pendingSection,shopDirectory,accountDirectory,profileDetails,routeTitles} from './workspace-design.mjs';
@@ -5,7 +6,7 @@ import {createLiveClient} from './online-client.mjs';
 import {createOperations} from './online-operations.mjs';
 const root=(document.getElementById('app')||document.getElementById('online-root')),client=createLiveClient();let identity=null,shops=[],profiles=[],members=[],section='dashboard',shopId='all',busy=false,revision=0,insideShop=false,customerTotals={},dashboardStats={},countsLoading=false,scopeRestored=false;
 const operations=createOperations({client,openForm,afterChange:loadData});
-const originalSections=createOriginalSections({client,navigate,onLiveAction:(action,id)=>operations.open(action,id),onReady:root=>accountActions.bind(root)});
+const originalSections=createOriginalSections({client,navigate,onLiveAction:(action,id)=>operations.open(action,id),onReady:(root,context)=>{accountActions.bind(root);bindLiveOrders({root,context,client,openForm,reload:loadData,navigate,canEdit:operationPermission('assign')})}});
 const accountActions=createAccountActions({client,openForm,reload:loadData,profiles:()=>profiles,current:()=>identity?.profile});
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const brand='<a class="brand" href="/"><span class="brandmark"></span><span>Jio<em>Flow</em></span></a>';
