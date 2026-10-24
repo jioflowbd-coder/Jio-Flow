@@ -4,7 +4,7 @@ A multi-business CRM with Supabase Auth/database and Vercel hosting. The main en
 
 Run `npm run build`. Vercel serves dist and api/manage.mjs. Required server configuration: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY (server only), JIOFLOW_APP_ORIGIN. Apply numbered Supabase migrations in order.
 
-See RELEASE-012.md for the current Agent login approval, Jio ID, password minimum, Creator controls, deployment instructions, checks and remaining limitations. Do not assume a visible retained control is connected: unavailable operations remain disabled and marked in the interface.
+See RELEASE-014.md and RELEASE-013.md for the current Agent login approval, Jio ID, password minimum, Creator controls, deployment instructions, checks and remaining limitations. Do not assume a visible retained control is connected: unavailable operations remain disabled and marked in the interface.
 
 The app uses real Auth sessions and database row policies. New managed Agents do not need email verification; each new login requires approval. Owner/Admin verification is retained. Creator is the only role that creates/manages shops. Owners are restricted to their assigned business; Admins follow permissions; Agents cannot read profit or product costs.
 
