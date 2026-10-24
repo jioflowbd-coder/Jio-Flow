@@ -3,7 +3,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 export function createOriginalSections({client,navigate,onLiveAction=()=>false,onReady=()=>{},bridge=()=>window.JioFlowOriginalViews}){
  let generation=0,viewContext=null;
  function bind(root){
-  root.querySelectorAll('[data-original-live]').forEach(b=>b.onclick=()=>{if(!onLiveAction(b.dataset.originalLive,b.dataset.originalId)){const note=root.querySelector('.original-connection-notice');if(note)note.textContent='This record or action is not ready. Refresh the page, or ask your administrator to enable editing.'}});
+  root.querySelectorAll('[data-original-live]').forEach(b=>b.onclick=()=>{if(!onLiveAction(b.dataset.originalLive,b.dataset.originalId)){const note=root.querySelector('.original-connection-notice');if(note){note.hidden=false;note.textContent='This record or action is not ready. Refresh the page, or ask your administrator to enable editing.'}}});
   root.querySelectorAll('[data-original-preview]').forEach(b=>b.onclick=()=>{bridge().preview(b.dataset.originalPreview,b.dataset.originalId);const modal=root.ownerDocument.getElementById('modal');modal?.querySelectorAll('[data-original-live]').forEach(button=>button.onclick=()=>{if(onLiveAction(button.dataset.originalLive,button.dataset.originalId))modal.close()})});
   root.querySelectorAll('[data-original-nav]').forEach(b=>b.onclick=()=>navigate({customers:'followups',team:'team',stores:'shops',creator:'dashboard'}[b.dataset.originalNav]||b.dataset.originalNav));
   const update=(type,value)=>{root.innerHTML=bridge().interact(type,value);bind(root)};

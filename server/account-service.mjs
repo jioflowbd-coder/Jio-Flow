@@ -29,8 +29,16 @@ export function createAccountService({env=process.env,fetcher=fetch}={}){
   const p=await call('/rest/v1/jf_profiles?select=id,active,deleted_at&id=eq.'+encodeURIComponent(user.id)+'&limit=1',{token});
   if(!p?.[0]?.active||p[0].deleted_at)throw new RequestError('Your account is inactive.',403);
   const rpc=(name,body)=>call('/rest/v1/rpc/'+name,{method:'POST',token,body});
+  if(input?.action==='agent_reset_send'){
+   if(!uuid.test(input.request_id||''))throw new RequestError('Select a password reset request.');
+   const target=await rpc('jf_authorize_agent_reset',{request_id:input.request_id});
+   if(!target?.email)throw new RequestError('Agent account was not found.',404);
+   await call('/auth/v1/recover?redirect_to='+encodeURIComponent(c.origin+'/'),{method:'POST',body:{email:target.email}});
+   return {message:'Reset email requested for the approved Agent. The Agent must finish resetting within one hour of approval.'};
+  }
   if(['account_reset','account_resend','account_email_change'].includes(input?.action)){
    if(!uuid.test(input.user_id||''))throw new RequestError('Select an account.');
+   if(input.action==='account_reset'&&(await rpc('jf_is_agent_account',{target_user:input.user_id}))===true)throw new RequestError('Agent password reset requires approval in Notifications.',403);
    const target=await rpc('jf_account_email_target',{target_user:input.user_id});
    if(!target?.email)throw new RequestError('The target account was not found.',404);
    if(input.action==='account_email_change'){
