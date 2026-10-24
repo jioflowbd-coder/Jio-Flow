@@ -1,3 +1,4 @@
+import {bindEcoryCatalog} from './product-images.mjs';
 import {createAccountRecovery} from './account-recovery.mjs';
 import {businessForm,readBusinessForm} from './business-form.mjs';
 import {notificationBar,bindNotifications} from './notifications.mjs';
@@ -10,7 +11,7 @@ import {createLiveClient} from './online-client.mjs';
 import {createOperations} from './online-operations.mjs';
 const root=(document.getElementById('app')||document.getElementById('online-root')),client=createLiveClient();let identity=null,shops=[],profiles=[],members=[],section='dashboard',shopId='all',busy=false,revision=0,insideShop=false,customerTotals={},dashboardStats={},countsLoading=false,scopeRestored=false,agentGate=null,approvalRequests=[],notificationFeed={items:[]},passwordRequests=[],notificationOpen=false,notificationError='',notificationSignature='',workspaceStatus=null;
 const operations=createOperations({client,openForm,afterChange:loadData});
-const originalSections=createOriginalSections({client,navigate,onLiveAction:(action,id)=>operations.open(action,id),onReady:(root,context)=>{accountActions.bind(root);bindCreatorRecords({root,context,client,openForm,reload:loadData});bindLiveOrders({root,context,client,openForm,reload:loadData,navigate,canEdit:operationPermission('assign')})}});
+const originalSections=createOriginalSections({client,navigate,onLiveAction:(action,id)=>operations.open(action,id),onReady:(root,context)=>{accountActions.bind(root);bindEcoryCatalog({root,context,client,openForm,reload:loadData});bindCreatorRecords({root,context,client,openForm,reload:loadData});bindLiveOrders({root,context,client,openForm,reload:loadData,navigate,canEdit:operationPermission('assign')})}});
 const accountRecovery=createAccountRecovery({client,openForm,reload:loadData,navigate,shops:()=>scopedShops(),preferredRole:()=>section==='admins'?'admin':section==='agents'?'agent':'owner'});
 const accountActions=createAccountActions({client,openForm,reload:loadData,profiles:()=>profiles,current:()=>identity?.profile,shops:()=>shops,members:()=>members});
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

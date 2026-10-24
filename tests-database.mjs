@@ -189,5 +189,26 @@ await identity(owner2);await denied("select public.jf_lookup_account('owner@test
 await db.exec('reset role');await db.exec("alter table auth.users add column raw_app_meta_data jsonb default '{}'::jsonb");const managedOrphan='edededed-eded-4ded-8ded-ededededed02';await db.query("insert into auth.users(id,email,email_confirmed_at,raw_app_meta_data) values($1,'managed-orphan@example.test',now(),'{\"jioflow_managed_agent\":true}')",[managedOrphan]);await identity(creator);await denied('select public.jf_recover_account($1,$2,$3,$4,true)',['managed-orphan@example.test',shop2,'agent','Managed orphan']);await denied('select public.jf_recover_account($1,$2,$3,$4,true)',['managed-orphan@example.test',shop2,'admin','Managed orphan']);
 console.log('012 checks passed: Creator-only lookup/recovery, removed Owner restore, missing profile repair, password hash unchanged, email verification preserved, assigned-account protection and managed-Agent promotion denial.');
 
+
+await db.exec('reset role');
+await db.exec(await readFile(new URL('./supabase/migrations/013_product_images.sql',import.meta.url),'utf8'));
+await identity(creator);
+const ecoryShop=(await q("select public.jf_create_shop('Ecory') as id"))[0].id;
+assert.equal((await q('select public.jf_add_ecory_catalog($1) as n',[ecoryShop]))[0].n,14);
+assert.equal((await q('select public.jf_add_ecory_catalog($1) as n',[ecoryShop]))[0].n,0);
+await denied('select public.jf_add_ecory_catalog($1)',[shop2]);
+const ep=(await q('select * from public.jf_products where shop_id=$1 limit 1',[ecoryShop]))[0];
+assert.ok(ep.image_path.startsWith('assets/'));
+await q('select public.jf_save_product($1,$2,$3)',[ecoryShop,ep.id,{name:ep.name,sku:ep.sku,sale_price:'123',image_path:'data:image/png;base64,aGVsbG8='}]);
+assert.equal((await q('select image_path from public.jf_products where id=$1',[ep.id]))[0].image_path,'data:image/png;base64,aGVsbG8=');
+await q('select public.jf_save_product($1,$2,$3)',[ecoryShop,ep.id,{name:ep.name,sku:ep.sku,sale_price:'124'}]);
+assert.equal((await q('select image_path from public.jf_products where id=$1',[ep.id]))[0].image_path,'data:image/png;base64,aGVsbG8=');
+await denied('select public.jf_save_product($1,$2,$3)',[ecoryShop,ep.id,{name:ep.name,sale_price:'123',image_path:'javascript:alert(1)'}]);
+await q('select public.jf_save_product($1,$2,$3)',[ecoryShop,ep.id,{name:ep.name,sku:ep.sku,sale_price:'124',image_path:''}]);
+assert.equal((await q('select image_path from public.jf_products where id=$1',[ep.id]))[0].image_path,null);
+await q('select public.jf_add_ecory_catalog($1)',[ecoryShop]);
+assert.equal(Number((await q('select sale_price from public.jf_products where id=$1',[ep.id]))[0].sale_price),124);
+await identity(agent);await denied('select public.jf_add_ecory_catalog($1)',[ecoryShop]);
+console.log('013 passed: Ecory-only catalog, idempotency, existing price retention, image save/preserve/remove and unsafe/Agent denial.');
 await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');
