@@ -210,5 +210,72 @@ await q('select public.jf_add_ecory_catalog($1)',[ecoryShop]);
 assert.equal(Number((await q('select sale_price from public.jf_products where id=$1',[ep.id]))[0].sale_price),124);
 await identity(agent);await denied('select public.jf_add_ecory_catalog($1)',[ecoryShop]);
 console.log('013 passed: Ecory-only catalog, idempotency, existing price retention, image save/preserve/remove and unsafe/Agent denial.');
+
+await db.exec('reset role');
+await db.exec(await readFile(new URL('./supabase/migrations/014_workspace_tools.sql',import.meta.url),'utf8'));
+await identity(creator);
+await q('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'save_settings',{value:{inside:60,outside:120,pull_count:3,sources:['website'],statuses:['Interested']}}]);
+let tools=(await q('select public.jf_workspace_tools($1,$2,$3) value',[ecoryShop,'load',{page:'dashboard'}]))[0].value;assert.equal(tools.settings.inside,60);
+await q('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'save_layout',{page:'dashboard',value:{title:'My dashboard',hidden:['x']}}]);
+tools=(await q('select public.jf_workspace_tools($1,$2,$3) value',[ecoryShop,'load',{page:'dashboard'}]))[0].value;assert.equal(tools.layout.title,'My dashboard');
+await denied('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'save_settings',{value:{api_secret:'never'}}]);
+await denied('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'save_settings',{value:{inside:-1}}]);
+await q('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'products',{ids:[ep.id],action:'deactivate'}]);assert.equal((await q('select active from public.jf_products where id=$1',[ep.id]))[0].active,false);
+let g=(await q('select public.jf_workspace_tools($1,$2,$3) value',[ecoryShop,'save_group',{name:'New group',members:[]}]))[0].value;
+await q('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'delete_group',{id:g.id}]);
+await identity(outsider);await denied('select public.jf_workspace_tools($1,$2,$3)',[ecoryShop,'load',{}]);
+console.log('014 passed: durable settings/layout, product bulk action, group CRUD, invalid settings and cross-tenant denial.');
+
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/015_reporting_pages.sql',import.meta.url),'utf8'));
+await identity(creator);let full=(await q('select public.jf_workspace_summary($1) v',[ecoryShop]))[0].v;assert.equal(typeof full.customers,'number');
+let paged=(await q('select public.jf_workspace_page($1,$2,$3,$4) v',[ecoryShop,'customers',{status:'unassigned'},0]))[0].v;assert.equal(paged.total,full.unassigned);
+await identity(outsider);full=(await q('select public.jf_workspace_summary($1) v',[ecoryShop]))[0].v;assert.equal(full.customers,0);assert.equal(full.orders,0);
+console.log('015 passed: database totals, filtered page/count agreement and RLS tenant isolation.');
+
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/016_delegated_accounts.sql',import.meta.url),'utf8'));
+await identity(creator);await q('select public.jf_save_profile($1,$2)',[creator,{full_name:'Creator'}]);
+await identity(outsider);await denied('select public.jf_save_profile($1,$2)',[creator,{full_name:'Attempt'}]);await denied('select public.jf_manage_account($1,$2,$3)',[creator,'deactivate',{}]);
+console.log('016 passed: delegated account migration, retained Creator self edit and outsider/Creator protection.');
+
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/017_history_import.sql',import.meta.url),'utf8'));
+await identity(creator);let job=(await q('select public.jf_history_import($1,$2,$3) v',[ecoryShop,'create',{file_name:'history.csv'}]))[0].v;
+const historicalRows=[{external_id:'OLD-1',customer:{full_name:'History Customer',phone:'01700006666'},products:'Product A',total:'100'},{external_id:'OLD-2',customer:{full_name:'History Customer',phone:'01700006666'},products:'Product B',total:'200'},{external_id:'BAD',customer:{full_name:'',phone:'bad'}}];
+await q('select public.jf_history_import($1,$2,$3)',[ecoryShop,'stage',{job_id:job.id,offset:0,rows:historicalRows}]);await q('select public.jf_history_import($1,$2,$3)',[ecoryShop,'stage',{job_id:job.id,offset:0,rows:historicalRows}]);await q('select public.jf_history_import($1,$2,$3)',[ecoryShop,'ready',{job_id:job.id}]);
+job=(await q('select public.jf_history_import($1,$2,$3) v',[ecoryShop,'process',{job_id:job.id}]))[0].v;assert.equal(job.status,'completed');assert.equal(job.staged,3);assert.equal(job.processed,3);assert.equal(job.rejected,1);
+assert.equal((await q('select * from public.jf_order_history where shop_id=$1',[ecoryShop])).length,2);
+await identity(outsider);await denied('select public.jf_history_import($1,$2,$3)',[ecoryShop,'list',{}]);assert.equal((await q('select * from public.jf_order_history where shop_id=$1',[ecoryShop])).length,0);
+console.log('017 passed: durable job staging retry, same-phone multiple invoices, row error isolation and cross-shop denial.');
+
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/018_finance_agent_totals.sql',import.meta.url),'utf8'));
+await identity(creator);assert.ok(Array.isArray((await q('select public.jf_agent_totals($1) v',[ecoryShop]))[0].v));assert.equal(typeof (await q('select public.jf_finance_totals($1) v',[ecoryShop]))[0].v.revenue,'number');
+await identity(outsider);await denied('select public.jf_finance_totals($1)',[ecoryShop]);
+console.log('018 passed: all-record Agent aggregation, finance totals and finance permission denial.');
+
+// Exercise the newly delegated hierarchy and distribution on an isolated tenant.
+await identity(creator);const toolkitShop=(await q("select public.jf_create_shop('Toolkit acceptance') id"))[0].id;
+const toolOwner='aaaa1111-1111-4111-8111-111111111111',toolAdmin='aaaa2222-2222-4222-8222-222222222222',toolAgent='aaaa3333-3333-4333-8333-333333333333';
+await db.exec('reset role');for(const [id,label] of [[toolOwner,'Owner'],[toolAdmin,'Admin'],[toolAgent,'Agent']]){await q('insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())',[id,label+'@toolkit.test']);await q('insert into public.jf_profiles(id,full_name,email) values($1,$2,$3)',[id,label,label+'@toolkit.test']);await q('insert into auth.sessions values($1,$1)',[id])}
+await q('update public.jf_shops set owner_id=$1 where id=$2',[toolOwner,toolkitShop]);
+const toolAdminMembership=(await q("insert into public.jf_memberships(shop_id,user_id,role,status,permissions) values($1,$2,'admin','active',$3) returning id",[toolkitShop,toolAdmin,{users:true,assign:true,settings:true,logout:true}]))[0].id;
+const toolAgentMembership=(await q("insert into public.jf_memberships(shop_id,user_id,role,status,permissions) values($1,$2,'agent','active',$3) returning id",[toolkitShop,toolAgent,{assign:true,pull:true}]))[0].id;
+await identity(toolOwner);await q('select public.jf_save_profile($1,$2)',[toolAdmin,{full_name:'Updated Admin'}]);await q('select public.jf_save_profile($1,$2)',[toolAgent,{full_name:'Updated Agent'}]);await denied('select public.jf_save_profile($1,$2)',[creator,{full_name:'Blocked'}]);
+await identity(toolAdmin);await q('select public.jf_save_profile($1,$2)',[toolAgent,{full_name:'Admin edited Agent'}]);await denied('select public.jf_save_profile($1,$2)',[toolOwner,{full_name:'Blocked'}]);await denied('select public.jf_save_profile($1,$2)',[toolAgent,{permissions:{profit:true}}]);
+await identity(toolOwner);const tc1=(await q('select public.jf_save_customer($1,null,$2) id',[toolkitShop,{full_name:'Queue One',phone:'01722223331'}]))[0].id;const tc2=(await q('select public.jf_save_customer($1,null,$2) id',[toolkitShop,{full_name:'Queue Two',phone:'01722223332'}]))[0].id;
+const tg=(await q('select public.jf_workspace_tools($1,$2,$3) v',[toolkitShop,'save_group',{name:'Sales group',members:[toolAgentMembership]}]))[0].v.id;
+await q('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'distribute',{ids:[tc1,tc2],group_id:tg}]);assert.equal((await q('select assigned_membership_id from public.jf_customers where id=$1',[tc1]))[0].assigned_membership_id,toolAgentMembership);
+await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'distribute',{ids:[tc1],membership_id:toolAdminMembership}]);
+await q('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'distribute',{ids:[tc1,tc2]}]);await q('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'save_settings',{value:{pull_count:1}}]);
+await identity(toolAgent);await q('select public.jf_agent_session($1)',['toolkit-device-123456']);await identity(toolOwner);await q('select public.jf_approve_agent($1,true)',[toolAgent]);await identity(toolAgent);
+let pull=(await q('select public.jf_workspace_tools($1,$2,$3) v',[toolkitShop,'pull',{}]))[0].v;assert.equal(pull.count,1);assert.equal((await q('select * from public.jf_customers where shop_id=$1',[toolkitShop])).length,1);
+await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'save_layout',{page:'dashboard',value:{}}]);await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'distribute',{ids:[tc1]}]);await denied('select public.jf_finance_totals($1)',[toolkitShop]);
+
+await identity(toolOwner);const financeProduct=(await q('select public.jf_save_product($1,null,$2) id',[toolkitShop,{name:'Finance product',sale_price:200,unit_cost:25}]))[0].id;
+const financeOrder=(await q('select public.jf_save_order($1,gen_random_uuid(),$2) id',[toolkitShop,{full_name:'Finance buyer',phone:'01722223339',address:'Dhaka',status:'confirmed',delivery_charge:10,items:[{product_id:financeProduct,quantity:1,unit_price:200}]}]))[0].id;
+await q('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'save_finance',{order_id:financeOrder,product_cost:100,courier_charge:10,cod_fee:5,packaging_cost:2,return_cost:0,other_cost:3,cod_expected:200,cod_received:150}]);
+let ft=(await q('select public.jf_finance_totals($1) v',[toolkitShop]))[0].v;assert.equal(ft.profit,90);assert.equal(ft.cod_pending,0);
+await db.exec('reset role');await q("update public.jf_orders set status='delivered' where id=$1",[financeOrder]);await identity(toolOwner);ft=(await q('select public.jf_finance_totals($1) v',[toolkitShop]))[0].v;assert.equal(ft.cod_pending,50);
+await identity(toolAdmin);await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'save_finance',{order_id:financeOrder}]);
+await identity(toolOwner);await q('select public.jf_manage_account($1,$2,$3)',[toolAgent,'deactivate',{}]);await identity(toolAgent);await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'pull',{}]);
+console.log('Toolkit acceptance passed: Owner/Admin delegated hierarchy, no Agent privilege escalation, same-shop group distribution, atomic one-record pull, own-queue RLS and deactivated-session denial.');
 await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');

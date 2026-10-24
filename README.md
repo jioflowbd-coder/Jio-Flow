@@ -1,3 +1,5 @@
+Current source checkpoint: see RELEASE-022.md for implemented changes, required SQL and remaining production/integration work.
+
 # JioFlow CRM
 
 A multi-business CRM with Supabase Auth/database and Vercel hosting. The main entry is index.html, with online.js and permission-checked RPC/server operations. The retained classic view sources provide the established visual design; their local authentication and mutation handlers are not used by the main application.

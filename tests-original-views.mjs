@@ -14,3 +14,25 @@ for(const route of ['dashboard','products','customers','followups','permanent','
  if(route==='new'){assert.ok(document.querySelector('#order-form'));assert.ok(document.querySelector('#order-phone').disabled)}
 }
 console.log('Original screens passed: sixteen retained views render, real rows appear, order tabs filter, no sample people or executable local mutations.');
+
+// Exercise actual allowlisted click transitions, without running legacy mutations.
+const bridge=context.JioFlowOriginalViews;
+bridge.render('dashboard',input);
+let drill=bridge.action({name:'dashboardOrders',args:['Confirmed']});assert.ok(drill.includes('REAL-001'));assert.equal(bridge.currentSection(),'orders');
+drill=bridge.action({name:'dashboardOrders',args:['Cancelled']});assert.equal(drill.includes('REAL-001'),false);
+bridge.render('dashboard',input);drill=bridge.action({name:'dashboardCustomers',args:['Unassigned']});assert.ok(drill.includes('Real Customer'));assert.equal(bridge.currentSection(),'followups');
+bridge.render('dashboard',input);document.getElementById('app').innerHTML=bridge.render('dashboard',input);assert.ok(document.querySelector('[data-original-action]'));
+const before=JSON.stringify(records);bridge.action({name:'deleteProduct',args:['product']});assert.equal(JSON.stringify(records),before);
+const member={id:'member',shop_id:'shop',user_id:'agent-user',role:'agent',status:'active'};const person={id:'agent-user',full_name:'Report Agent',email:'report@example.test',active:true};const reportInput={...input,members:[member],profiles:[profile,person]};
+bridge.render('agentreports',reportInput);drill=bridge.action({name:'openAgentReport',args:['member']});assert.equal(bridge.currentSection(),'agentdetail');assert.ok(drill.includes('Report Agent'));
+console.log('Click regression checks passed: confirmed/cancelled order drill-down, unassigned queue, Agent full report and mutation allowlist.');
+bridge.render('profit',input);drill=bridge.action({name:'profitDetail',args:['source','facebook']});assert.equal(bridge.currentSection(),'profitdetail');assert.ok(drill.includes('REAL-001'));
+bridge.render('profit',input);drill=bridge.action({name:'profitDetail',args:['source','whatsapp']});assert.equal(drill.includes('REAL-001'),false);
+bridge.render('followups',input);document.getElementById('app').innerHTML=bridge.render('followups',input);assert.ok(document.querySelector('[data-original-live="followupForm"]'));assert.ok(document.querySelector('[data-original-live="showCustomer"]'));
+const {createOriginalSections}=await import('./original-sections.mjs');let activeContext,opened=[];const region=document.getElementById('app');
+const client={query:async table=>({jf_orders:records.orders,jf_products:records.products,jf_customers:records.customers,jf_order_items:records.items}[table]||[])};
+const sections=createOriginalSections({client,navigate:()=>{},bridge:()=>bridge,onLiveAction:async(action,id)=>{opened.push([action,id]);return true},onReady:(_,ctx)=>{activeContext=ctx}});
+await sections.mount({...input,root:region,section:'dashboard',canFinance:false});
+const confirmedButton=[...region.querySelectorAll('[data-original-action]')].find(b=>JSON.parse(b.dataset.originalAction).name==='dashboardOrders');assert.ok(confirmedButton);confirmedButton.onclick();assert.equal(activeContext.section,'orders');assert.ok(region.textContent.includes('REAL-001'));
+await sections.mount({...input,root:region,section:'followups',canFinance:false});await region.querySelector('[data-original-live="showCustomer"]').onclick();assert.deepEqual(opened.at(-1),['showCustomer','customer']);
+console.log('DOM click checks passed: bound summary click opens order list; customer opens live action; profit source filters exclude unrelated records.');

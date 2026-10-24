@@ -4,7 +4,10 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 export function createOriginalSections({client,navigate,onLiveAction=()=>false,onReady=()=>{},bridge=()=>window.JioFlowOriginalViews}){
  let generation=0,viewContext=null;
  function bind(root){
-  root.querySelectorAll('[data-original-live]').forEach(b=>b.onclick=()=>{if(!onLiveAction(b.dataset.originalLive,b.dataset.originalId)){const note=root.querySelector('.original-connection-notice');if(note){note.hidden=false;note.textContent='This record or action is not ready. Refresh the page, or ask your administrator to enable editing.'}}});
+  const active=bridge().currentSection?.();if(active)viewContext={...viewContext,section:active};
+  root.querySelectorAll('[data-original-action]').forEach(b=>b.onclick=()=>{root.innerHTML=bridge().action(JSON.parse(b.dataset.originalAction));bind(root)});
+  root.querySelectorAll('[data-original-summary]').forEach(b=>b.onclick=()=>bridge().summary(b.dataset.originalSummary));
+  root.querySelectorAll('[data-original-live]').forEach(b=>b.onclick=async()=>{const note=root.querySelector('.original-connection-notice');try{const ok=await onLiveAction(b.dataset.originalLive,b.dataset.originalId);if(!ok)throw Error('This action is unavailable for this record or your account permissions.');}catch(error){if(note){note.hidden=false;note.textContent=error.message}}});
   root.querySelectorAll('[data-original-preview]').forEach(b=>b.onclick=()=>{bridge().preview(b.dataset.originalPreview,b.dataset.originalId);const modal=root.ownerDocument.getElementById('modal');modal?.querySelectorAll('[data-original-live]').forEach(button=>button.onclick=()=>{if(onLiveAction(button.dataset.originalLive,button.dataset.originalId))modal.close()})});
   root.querySelectorAll('[data-original-nav]').forEach(b=>b.onclick=()=>navigate({customers:'followups',team:'team',stores:'shops',creator:'dashboard'}[b.dataset.originalNav]||b.dataset.originalNav));
   const update=(type,value)=>{root.innerHTML=bridge().interact(type,value);bind(root)};
@@ -14,6 +17,7 @@ export function createOriginalSections({client,navigate,onLiveAction=()=>false,o
   root.querySelectorAll('[data-original-export]').forEach(b=>b.onclick=()=>bridge().export(b.dataset.originalExport));
   root.querySelectorAll('[data-original-page]').forEach(b=>b.onclick=()=>update('page',b.dataset.originalPage));
   root.querySelectorAll('[data-original-rows]').forEach(input=>input.onchange=()=>update('rows',input.value));
+  root.querySelectorAll('[data-original-chart]').forEach(b=>b.onclick=()=>update('chart',b.dataset.originalChart));
   root.querySelectorAll('[data-original-tab]').forEach(b=>b.onclick=()=>update('tab',b.dataset.originalTab));
   root.querySelectorAll('[data-original-filters]').forEach(b=>b.onclick=()=>update('filters'));
   root.querySelectorAll('[data-original-search]').forEach(input=>{input.onchange=()=>update('search',input.value);input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();update('search',input.value)}}});
@@ -27,8 +31,9 @@ export function createOriginalSections({client,navigate,onLiveAction=()=>false,o
    let records={};if(shop&&!['settings','platformsettings','import','profile','shop'].includes(section)){
     const scoped='select=*&shop_id=eq.'+encodeURIComponent(shop.id);
     const [orders,products,customers]=await Promise.all([client.query('jf_orders',scoped+'&archived_at=is.null&order=created_at.desc&limit=50'),client.query('jf_products',scoped+'&archived_at=is.null&order=created_at.desc&limit=50'),client.query('jf_customers',scoped+'&archived_at=is.null&order=updated_at.desc&limit=50')]);
-    records={orders:orders||[],products:products||[],customers:customers||[],items:[],payments:[],followups:[],costs:[]};
+    records={orders:orders||[],products:products||[],customers:customers||[],items:[],payments:[],followups:[],costs:[],finance:[]};
     if(records.orders.length){const ids=records.orders.map(o=>o.id).join(',');for(let offset=0;;offset+=1000){const items=await client.query('jf_order_items',scoped+'&order_id=in.('+ids+')&order=id.asc&limit=1000&offset='+offset);records.items.push(...(items||[]));if(!items||items.length<1000)break}for(let offset=0;;offset+=1000){const payments=await client.query('jf_payments',scoped+'&order_id=in.('+ids+')&order=id.asc&limit=1000&offset='+offset);records.payments.push(...(payments||[]));if(!payments||payments.length<1000)break}}
+    if(canFinance&&records.orders.length)records.finance=await client.query('jf_order_finance',scoped+'&order_id=in.('+records.orders.map(o=>o.id).join(',')+')')||[];
     if(records.customers.length)records.followups=await client.query('jf_followups',scoped+'&customer_id=in.('+records.customers.map(c=>c.id).join(',')+')&limit=50')||[];
     if(canFinance&&records.products.length)records.costs=await client.query('jf_product_costs',scoped+'&product_id=in.('+records.products.map(p=>p.id).join(',')+')&limit=50')||[];
    }
