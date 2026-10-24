@@ -16,7 +16,7 @@ export function createAccountService({env=process.env,fetcher=fetch}={}){
   if(!response.ok){
    const code=data?.code||data?.error_code;
    const status=response.status===401?401:code==='42501'?403:code==='23505'?409:response.status===429?429:400;
-   const safe=code==='42501'?'Your role does not permit this action.':code==='23505'?'This account or Owner assignment already exists.':code==='P0001'?'Please wait a minute before sending more invitations.':code==='email_exists'||code==='email_address_not_authorized'?'The email invitation could not be sent. Check the address and email delivery configuration.':response.status===429?'Too many requests. Please try again shortly.':path.startsWith('/rest/v1/rpc/')?'Account setup could not be completed. Check migration 003 and your permissions.':'The account request failed. Please check email delivery and try again.';
+   const safe=code==='PGRST202'?'Database update 008 is required for account email controls.':code==='over_email_send_rate_limit'||code==='over_request_rate_limit'?'Wait at least one minute before sending another email.':code==='42501'?'Your role does not permit this action.':code==='23505'?'This account or Owner assignment already exists.':code==='P0001'?'Please wait a minute before sending more invitations.':code==='email_exists'||code==='email_address_not_authorized'?'The email invitation could not be sent. Check the address and email delivery configuration.':response.status===429?'Too many requests. Please try again shortly.':path.startsWith('/rest/v1/rpc/')?'Account setup could not be completed. Check migration 003 and your permissions.':'The account request failed. Please check email delivery and try again.';
    throw new RequestError(safe,status);
   }
   return data;
@@ -29,6 +29,31 @@ export function createAccountService({env=process.env,fetcher=fetch}={}){
   const p=await call('/rest/v1/jf_profiles?select=id,active,deleted_at&id=eq.'+encodeURIComponent(user.id)+'&limit=1',{token});
   if(!p?.[0]?.active||p[0].deleted_at)throw new RequestError('Your account is inactive.',403);
   const rpc=(name,body)=>call('/rest/v1/rpc/'+name,{method:'POST',token,body});
+  if(['account_reset','account_resend','account_email_change'].includes(input?.action)){
+   if(!uuid.test(input.user_id||''))throw new RequestError('Select an account.');
+   const target=await rpc('jf_account_email_target',{target_user:input.user_id});
+   if(!target?.email)throw new RequestError('The target account was not found.',404);
+   if(input.action==='account_email_change'){
+    const next=String(input.email||'').trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)||next.length>254)throw new RequestError('Enter a valid new email.');
+    if(next===target.email.toLowerCase())return {message:'This email is already in use for this account.'};
+    // Prepare the provider-managed change, never return its tokens or links.
+    // Resend is a separate action after the provider frequency limit expires.
+    await call('/auth/v1/admin/generate_link',{method:'POST',key:c.secret,token:c.secret,body:{type:'email_change_new',email:target.email,new_email:next,redirect_to:c.origin+'/'}});
+    return {message:'Email change prepared. Wait at least one minute, then click Send verification. Keep using the current email until the change is confirmed.'};
+   }
+   if(!target.verified){
+    const invitedAgain=await call('/auth/v1/invite?redirect_to='+encodeURIComponent(c.origin+'/'),{method:'POST',key:c.secret,token:c.secret,body:{email:target.email}});
+    if((invitedAgain?.id||invitedAgain?.user?.id)!==input.user_id)throw new RequestError('Verification identity could not be confirmed.',502);
+    return {message:'Verification / account setup email requested. Check this account inbox and spam folder.'};
+   }
+   if(input.action==='account_resend'){
+    if(!target.pending_email)return {message:'This email is already verified.'};
+    await call('/auth/v1/resend?redirect_to='+encodeURIComponent(c.origin+'/'),{method:'POST',body:{type:'email_change',email:target.email}});
+    return {message:'Email change confirmation requested. Check the new and current inboxes; both confirmations may be required.'};
+   }
+   await call('/auth/v1/recover?redirect_to='+encodeURIComponent(c.origin+'/'),{method:'POST',body:{email:target.email}});
+   return {message:'Password reset requested for the account email. Check inbox and spam. Delivery depends on the email service.'};
+  }
   if(input?.action==='create_shop'){
    const name=String(input.name||'').trim();if(!name||name.length>120)throw new RequestError('Enter a shop name (up to 120 characters).');
    const id=await rpc('jf_create_shop',{shop_name:name,contact_email:String(input.email||''),contact_phone:String(input.phone||''),shop_address:String(input.address||''),shop_website:String(input.website||'')});
