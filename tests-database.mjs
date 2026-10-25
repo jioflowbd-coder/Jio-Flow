@@ -313,5 +313,22 @@ const importedRows=(await q("select public.jf_workspace_page($1,'orders','{\"sta
 await identity(owner2);const isolatedCounts=(await q("select public.jf_workspace_page($1,'customers','{}'::jsonb,0) as v",[shop]))[0].v;assert.equal(isolatedCounts.counts.all,0);
 console.log('Inline tab counts passed: all-status totals, selected-list consistency and cross-business RLS isolation.');
 
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/022_notification_inbox_actions.sql',import.meta.url),'utf8'));
+const inboxNote=(await q("insert into public.jf_notifications(shop_id,kind,title,body) values($1,'order','Inbox acceptance','Body') returning id",[toolkitShop]))[0].id;
+await db.query("insert into public.jf_notifications(shop_id,kind,title,body) select $1,'order','Bulk read','Body' from generate_series(1,60)",[toolkitShop]);
+await q("update public.jf_notifications set created_at=now()+interval '1 second' where id=$1",[inboxNote]);
+await identity(creator);await q("select public.jf_notification_action('read_all',null,$1)",[toolkitShop]);let inbox=(await q('select public.jf_notifications_feed($1) v',[toolkitShop]))[0].v;assert.equal(inbox.unread_count,0);
+await q("select public.jf_notification_action('delete',$1,$2)",[inboxNote,toolkitShop]);assert.equal((await q('select public.jf_notifications_feed($1) v',[toolkitShop]))[0].v.items.some(n=>n.id===inboxNote),false);
+await db.exec('reset role');assert.equal((await q('select count(*)::int n from public.jf_notification_dismissals where user_id=$1 and notification_id=$2',[creator,inboxNote]))[0].n,1);
+await identity(toolOwner);assert.ok((await q('select public.jf_notifications_feed($1) v',[toolkitShop]))[0].v.items.some(n=>n.id===inboxNote));await q("select public.jf_notification_read($1)",[inboxNote]);await q("select public.jf_notification_action('delete',$1,$2)",[inboxNote,toolkitShop]);await identity(outsider);await denied("select public.jf_notification_action('delete',$1,$2)",[inboxNote,toolkitShop]);
+await identity(creator);await denied("select public.jf_notification_action('unknown',null,null)");console.log('022 passed: bulk read includes more than 50, dismissals are personal and inaccessible notifications cannot be deleted.');
+
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/023_unified_order_lists.sql',import.meta.url),'utf8'));
+await db.query("insert into public.jf_order_history(shop_id,customer_id,external_id,details) values($1,$2,'UNIFIED-PENDING','{\"status\":\"Pending\",\"total\":\"200\"}'),($1,$2,'UNIFIED-DELIVERED','{\"status\":\"Delivered\",\"total\":\"300\"}')",[toolkitShop,tc1]);
+await identity(creator);const unified=(await q("select public.jf_workspace_page($1,'orders','{}'::jsonb,0) v",[toolkitShop]))[0].v;assert.equal(unified.total,unified.counts.all);assert.ok(unified.rows.some(r=>r.order_number==='UNIFIED-PENDING'));assert.ok(unified.rows.some(r=>r.id===financeOrder));
+const pendingUnified=(await q("select public.jf_workspace_page($1,'orders','{\"status\":\"draft\"}'::jsonb,0) v",[toolkitShop]))[0].v;assert.equal(pendingUnified.total,pendingUnified.counts.draft);assert.ok(pendingUnified.rows.some(r=>r.order_number==='UNIFIED-PENDING'));
+const deliveredUnified=(await q("select public.jf_workspace_page($1,'orders','{\"status\":\"delivered\"}'::jsonb,0) v",[toolkitShop]))[0].v;assert.equal(deliveredUnified.total,deliveredUnified.counts.delivered);assert.ok(deliveredUnified.rows.some(r=>r.order_number==='UNIFIED-DELIVERED'));
+await identity(outsider);assert.equal((await q("select public.jf_workspace_page($1,'orders','{}'::jsonb,0) v",[toolkitShop]))[0].v.total,0);console.log('023 passed: All contains live + imported history, status counts match lists and tenant isolation remains enforced.');
+
 await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');

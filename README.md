@@ -1,3 +1,7 @@
+Latest update: RELEASE-030.md — unified order lists, quick revisits and notification inbox.
+
+Latest notification inbox update: RELEASE-029.md.
+
 Current branding update: RELEASE-026.md; includes all performance and tab count changes from RELEASE-025.md.
 
 Current update: see RELEASE-025.md for faster navigation, stable lists, status tab counts and box connections.
