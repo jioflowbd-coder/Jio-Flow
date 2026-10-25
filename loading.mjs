@@ -1,0 +1,3 @@
+export function loadingMarkup(){return '<div class="jioflow-loader" role="status" aria-label="Loading"><div class="jioflow-loader-ring"><span class="brandmark" aria-hidden="true"></span></div><span class="sr-only">Loading</span></div>'}
+export function showLoading(){let overlay=document.getElementById('jioflow-busy');if(!overlay){overlay=document.createElement('div');overlay.id='jioflow-busy';overlay.innerHTML=loadingMarkup();document.body.append(overlay)}return ()=>overlay.remove()}
+export function isAuthenticationError(error){return error?.status===401||['refresh_token_not_found','refresh_token_already_used','session_not_found','user_banned'].includes(error?.code)}

@@ -277,5 +277,30 @@ await db.exec('reset role');await q("update public.jf_orders set status='deliver
 await identity(toolAdmin);await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'save_finance',{order_id:financeOrder}]);
 await identity(toolOwner);await q('select public.jf_manage_account($1,$2,$3)',[toolAgent,'deactivate',{}]);await identity(toolAgent);await denied('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'pull',{}]);
 console.log('Toolkit acceptance passed: Owner/Admin delegated hierarchy, no Agent privilege escalation, same-shop group distribution, atomic one-record pull, own-queue RLS and deactivated-session denial.');
+
+{
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/019_import_notifications.sql',import.meta.url),'utf8'));
+await identity(toolOwner);let batch=(await q('select public.jf_save_customer_batch($1,$2) v',[toolkitShop,[{full_name:'Batch one',phone:'01733334441'},{full_name:'Batch two',phone:'01733334442'}]]))[0].v;assert.equal(batch.saved,2);const hundred=Array.from({length:100},(_,i)=>({full_name:'Batch '+i,phone:'017'+String(50000000+i)}));assert.equal((await q('select public.jf_save_customer_batch($1,$2) v',[toolkitShop,hundred]))[0].v.saved,100);await denied('select public.jf_save_customer_batch($1,$2)',[toolkitShop,[...hundred,hundred[0]]]);
+await denied('select public.jf_save_customer_batch($1,$2)',[toolkitShop,[{full_name:'Rollback',phone:'01733334443'},{full_name:'Bad',phone:'bad'}]]);assert.equal((await q("select * from public.jf_customers where phone='+8801733334443'")).length,0);
+const negativeCustomer=(await q("select id from public.jf_customers where phone='+8801733334441'"))[0].id;
+await q('select public.jf_record_followup($1,$2,$3,$4,null,$5)',[toolkitShop,negativeCustomer,'completed','negative','Not interested']);
+let feed=(await q('select public.jf_notifications_feed($1) v',[toolkitShop]))[0].v;assert.equal(feed.items.filter(n=>n.kind==='negative_followup').length,1);
+await q('select public.jf_record_followup($1,$2,$3,$4,null,$5)',[toolkitShop,negativeCustomer,'completed','negative','Same outcome']);feed=(await q('select public.jf_notifications_feed($1) v',[toolkitShop]))[0].v;assert.equal(feed.items.filter(n=>n.kind==='negative_followup').length,1);
+let overview=(await q('select public.jf_phone_courier_overview($1,$2) v',[toolkitShop,'01733334441']))[0].v;assert.equal(overview.providers.length,2);assert.equal(overview.providers.some(p=>p.connected),false);
+await q('select public.jf_manage_account($1,$2,$3)',[toolAgent,'activate',{}]);
+await db.exec('reset role');await q('update public.jf_orders set assigned_membership_id=$1 where id=$2',[toolAgentMembership,financeOrder]);await q('update public.jf_profiles set email_verified_at=now() where id=$1',[toolOwner]);
+await identity(toolOwner);feed=(await q('select public.jf_notifications_feed($1) v',[toolkitShop]))[0].v;assert.ok(feed.items.some(n=>n.kind==='verification'));assert.equal(feed.items.filter(n=>n.kind==='top_performer').length,1);
+await identity(creator);await q('select public.jf_platform_layout($1,$2)',['dashboard:all',{items:{a:{order:1}}}]);assert.equal((await q('select public.jf_platform_layout($1) v',['dashboard:all']))[0].v.items.a.order,1);
+await identity(toolOwner);await denied('select public.jf_platform_layout($1,$2)',['dashboard:all',{}]);
+await identity(outsider);await denied('select public.jf_save_customer_batch($1,$2)',[toolkitShop,[{full_name:'No',phone:'01733334444'}]]);await denied('select public.jf_phone_courier_overview($1,$2)',[toolkitShop,'01733334441']);
+console.log('019 passed: 100-row import RPC, atomic rollback, negative/verification/top-performer events, honest disconnected courier overview and tenant denial.');
+}
+
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/020_direct_record_panels.sql',import.meta.url),'utf8'));
+await identity(toolOwner);let inlineRows=(await q('select public.jf_workspace_page($1,$2,$3,0) v',[toolkitShop,'customers',{status:'negative'}]))[0].v;assert.equal(inlineRows.total,1);assert.ok(inlineRows.rows[0].latest_note);
+const labelCustomer=inlineRows.rows[0].id;await q('select public.jf_workspace_tools($1,$2,$3)',[toolkitShop,'customer_labels',{customer_id:labelCustomer,label:'Interested Again',tag:'Return'}]);inlineRows=(await q('select public.jf_workspace_page($1,$2,$3,0) v',[toolkitShop,'customers',{status:'interested_again',tag:'Return',source:'MANUAL'}]))[0].v;assert.equal(inlineRows.total,1);
+inlineRows=(await q('select public.jf_workspace_page($1,$2,$3,0) v',[toolkitShop,'orders',{status:'confirmed',product_id:financeProduct}]))[0].v;assert.equal(inlineRows.total,1);assert.equal(inlineRows.rows[0].id,financeOrder);
+await identity(outsider);assert.equal((await q('select public.jf_workspace_page($1,$2,$3,0) v',[toolkitShop,'customers',{status:'all'}]))[0].v.total,0);
+console.log('020 passed: full inline panels retain tenant isolation, custom labels/tags/source/product filters and latest notes.');
 await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');

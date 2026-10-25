@@ -1,3 +1,7 @@
+Latest cumulative update: RELEASE-024.md. Install the new Database 024 bundle after the previous Database 022 update.
+
+Latest update: RELEASE-023.md. Apply migration 019 after the previous Database 022 update.
+
 Current source checkpoint: see RELEASE-022.md for implemented changes, required SQL and remaining production/integration work.
 
 # JioFlow CRM

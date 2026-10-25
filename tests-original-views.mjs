@@ -29,10 +29,10 @@ console.log('Click regression checks passed: confirmed/cancelled order drill-dow
 bridge.render('profit',input);drill=bridge.action({name:'profitDetail',args:['source','facebook']});assert.equal(bridge.currentSection(),'profitdetail');assert.ok(drill.includes('REAL-001'));
 bridge.render('profit',input);drill=bridge.action({name:'profitDetail',args:['source','whatsapp']});assert.equal(drill.includes('REAL-001'),false);
 bridge.render('followups',input);document.getElementById('app').innerHTML=bridge.render('followups',input);assert.ok(document.querySelector('[data-original-live="followupForm"]'));assert.ok(document.querySelector('[data-original-live="showCustomer"]'));
-const {createOriginalSections}=await import('./original-sections.mjs');let activeContext,opened=[];const region=document.getElementById('app');
+const {createOriginalSections}=await import('./original-sections.mjs');let activeContext,opened=[],navigation;const region=document.getElementById('app');
 const client={query:async table=>({jf_orders:records.orders,jf_products:records.products,jf_customers:records.customers,jf_order_items:records.items}[table]||[])};
-const sections=createOriginalSections({client,navigate:()=>{},bridge:()=>bridge,onLiveAction:async(action,id)=>{opened.push([action,id]);return true},onReady:(_,ctx)=>{activeContext=ctx}});
+const sections=createOriginalSections({client,navigate:(section,filters)=>{navigation={section,filters}},bridge:()=>bridge,onLiveAction:async(action,id)=>{opened.push([action,id]);return true},onReady:(_,ctx)=>{activeContext=ctx}});
 await sections.mount({...input,root:region,section:'dashboard',canFinance:false});
-const confirmedButton=[...region.querySelectorAll('[data-original-action]')].find(b=>JSON.parse(b.dataset.originalAction).name==='dashboardOrders');assert.ok(confirmedButton);confirmedButton.onclick();assert.equal(activeContext.section,'orders');assert.ok(region.textContent.includes('REAL-001'));
+const confirmedButton=[...region.querySelectorAll('[data-original-action]')].find(b=>JSON.parse(b.dataset.originalAction).name==='dashboardOrders');assert.ok(confirmedButton);confirmedButton.onclick();assert.equal(navigation.section,'orders');assert.equal(navigation.filters.status,'confirmed');
 await sections.mount({...input,root:region,section:'followups',canFinance:false});await region.querySelector('[data-original-live="showCustomer"]').onclick();assert.deepEqual(opened.at(-1),['showCustomer','customer']);
 console.log('DOM click checks passed: bound summary click opens order list; customer opens live action; profit source filters exclude unrelated records.');
