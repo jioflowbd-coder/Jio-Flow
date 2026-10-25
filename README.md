@@ -1,3 +1,5 @@
+Latest update: RELEASE-031.md — Agent reports and supervisor dashboards.
+
 Latest update: RELEASE-030.md — unified order lists, quick revisits and notification inbox.
 
 Latest notification inbox update: RELEASE-029.md.

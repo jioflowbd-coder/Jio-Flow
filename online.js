@@ -1,3 +1,4 @@
+import {bindAgentReports,invalidateAgentReports} from './agent-reports.mjs';
 import {invalidateRecordPages} from './record-cache.mjs';
 import {bindAppearance,applyAppearance,readAppearance} from './appearance.mjs';
 import {loadingMarkup,showLoading,isAuthenticationError} from './loading.mjs';
@@ -21,7 +22,7 @@ let refreshInFlight=false,panelFilter=null,firstWorkspaceRender=true;
 applyAppearance(readAppearance());
 const operations=createOperations({client,openForm,afterChange:loadData});let operationsReady=null;
 function ensureOperations(){return operationsReady||(operationsReady=Promise.resolve(mountOperations()))}
-const originalSections=createOriginalSections({client,navigate,onLiveAction:async(action,id)=>{await ensureOperations();return operations.open(action,id)},onReady:(root,context)=>{accountActions.bind(root);queueMicrotask(()=>bindHistoricalImport({root,context,client}));bindWorkspaceTools({root,context,client,openForm,reload:loadData,navigate,openRecord:async(action,id)=>{await ensureOperations();return operations.open(action,id)}});bindEcoryCatalog({root,context,client,openForm,reload:loadData});bindCreatorRecords({root,context,client,openForm,reload:loadData});bindLiveOrders({root,context,client,openForm,reload:loadData,navigate,canEdit:operationPermission('assign')});bindCourierOverview({root,context,client})}});
+const originalSections=createOriginalSections({client,navigate,onLiveAction:async(action,id)=>{await ensureOperations();return operations.open(action,id)},onReady:(root,context)=>{if(context.section==='agentreports'){bindAgentReports({root,context,client,navigate,openForm});return}accountActions.bind(root);queueMicrotask(()=>bindHistoricalImport({root,context,client}));bindWorkspaceTools({root,context,client,openForm,reload:loadData,navigate,openRecord:async(action,id)=>{await ensureOperations();return operations.open(action,id)}});bindEcoryCatalog({root,context,client,openForm,reload:loadData});bindCreatorRecords({root,context,client,openForm,reload:loadData});bindLiveOrders({root,context,client,openForm,reload:loadData,navigate,canEdit:operationPermission('assign')});bindCourierOverview({root,context,client})}});
 const accountRecovery=createAccountRecovery({client,openForm,reload:loadData,navigate,shops:()=>scopedShops(),preferredRole:()=>section==='admins'?'admin':section==='agents'?'agent':'owner'});
 const accountActions=createAccountActions({client,openForm,reload:loadData,profiles:()=>profiles,current:()=>identity?.profile,shops:()=>shops,members:()=>members});
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -31,7 +32,7 @@ function roleOf(p){if(p.platform_role==='creator')return 'Creator';if(shops.some
 function scopedShops(){return shopId==='all'?shops:shops.filter(s=>s.id===shopId)}
 function scopedProfiles(){if(shopId==='all')return profiles;const shop=shops.find(s=>s.id===shopId);return profiles.filter(p=>shop?.owner_id===p.id||members.some(m=>m.shop_id===shopId&&m.user_id===p.id))}
 async function loadData(){
- if(!identity)return;invalidateRecordPages(client);const current=++revision,user=identity.profile.id,creator=identity.profile.platform_role==='creator';
+ if(!identity)return;invalidateRecordPages(client);invalidateAgentReports(client);const current=++revision,user=identity.profile.id,creator=identity.profile.platform_role==='creator';
  const [status,gate,nextShops,nextProfiles,nextMembers]=await Promise.all([
   creator?Promise.resolve(null):client.rpc('jf_workspace_status',{}),client.rpc('jf_agent_session',{device_id:deviceId()}),
   client.query('jf_shops','select=*&order=created_at.asc'),client.query('jf_profiles','select=*&deleted_at=is.null&order=created_at.asc'),client.query('jf_memberships','select=*&status=neq.removed')]);
@@ -71,6 +72,7 @@ function render(){
  if(refreshInFlight){const refresh=root.querySelector('#online-refresh');if(refresh){refresh.classList.add('is-refreshing');refresh.disabled=true}}
  root.querySelector('.top-actions .account-pill')?.insertAdjacentHTML('beforebegin',notificationBar(notificationState()));
  root.querySelectorAll('[data-section]').forEach(el=>el.onclick=()=>navigate(el.dataset.section));
+ root.querySelectorAll('[data-agent-dashboard-user]').forEach(b=>b.onclick=()=>{const membership=members.find(m=>m.user_id===b.dataset.agentDashboardUser&&m.role==='agent'&&m.status!=='removed'&&(shopId==='all'||m.shop_id===shopId));if(membership){shopId=membership.shop_id;if(role==='Creator')insideShop=true;navigate('agentreports',{agent_id:membership.id,view:'dashboard',entity:'customers',status:'all'})}});
  root.querySelector('[data-home]')?.addEventListener('click',e=>{e.preventDefault();navigate('dashboard')});
  root.querySelectorAll('[data-open-shop]').forEach(el=>el.onclick=()=>{shopId=el.dataset.openShop;insideShop=true;navigate('shop');loadDashboardCounts()});
  root.querySelector('[data-back-shops]')?.addEventListener('click',()=>{insideShop=false;navigate('shops')});

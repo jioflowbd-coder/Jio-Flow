@@ -330,5 +330,13 @@ const pendingUnified=(await q("select public.jf_workspace_page($1,'orders','{\"s
 const deliveredUnified=(await q("select public.jf_workspace_page($1,'orders','{\"status\":\"delivered\"}'::jsonb,0) v",[toolkitShop]))[0].v;assert.equal(deliveredUnified.total,deliveredUnified.counts.delivered);assert.ok(deliveredUnified.rows.some(r=>r.order_number==='UNIFIED-DELIVERED'));
 await identity(outsider);assert.equal((await q("select public.jf_workspace_page($1,'orders','{}'::jsonb,0) v",[toolkitShop]))[0].v.total,0);console.log('023 passed: All contains live + imported history, status counts match lists and tenant isolation remains enforced.');
 
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/024_agent_report_dashboard.sql',import.meta.url),'utf8'));
+await identity(creator);let report=(await q('select public.jf_agent_report($1,$2) v',[toolkitShop,toolAgentMembership]))[0].v;assert.equal(report.agents.length,1);assert.equal(report.agents[0].id,toolAgentMembership);assert.equal(typeof report.agents[0].pending,'number');assert.equal(report.agents[0].name,'Admin edited Agent');assert.ok(Array.isArray(report.activity));
+const reportCounts=(await q("select public.jf_workspace_page($1,'customers',$2,0) v",[toolkitShop,{agent_id:toolAgentMembership,status:'pending'}]))[0].v;assert.equal(report.agents[0].pending,reportCounts.total);
+await identity(toolOwner);assert.equal((await q('select public.jf_agent_report($1,$2) v',[toolkitShop,toolAgentMembership]))[0].v.agents.length,1);
+await identity(toolAdmin);assert.equal((await q('select public.jf_agent_report($1,$2) v',[toolkitShop,toolAgentMembership]))[0].v.agents.length,1);
+await identity(toolAgent);await denied('select public.jf_agent_report($1,$2)',[toolkitShop,toolAgentMembership]);await identity(owner2);await denied('select public.jf_agent_report($1,$2)',[toolkitShop,toolAgentMembership]);
+await identity(creator);await denied('select public.jf_agent_report($1,$2)',[shop2,toolAgentMembership]);console.log('024 passed: Creator/Owner/authorized Admin views, Agent/other-business denial, matching workload counts and recorded activity.');
+
 await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');
