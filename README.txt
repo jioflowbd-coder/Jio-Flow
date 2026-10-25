@@ -1,52 +1,36 @@
-JioFlow + Steadfast integration bundle — code package (NOT turnkey CRM integration)
+JioFlow Steadfast polling every ~30 minutes (GitHub Actions + Vercel Hobby)
 
-CONTENTS
-api/steadfast.mjs             authenticated status, guarded booking, stored webhook history
-api/steadfast-webhook.mjs     token protected event receiver, event-only storage
-supabase/steadfast.sql        new dedicated tables (does NOT touch existing CRM orders)
-examples/frontend-call.js     authenticated frontend API example
+IMPORTANT: Ecom Merchant Webhook is UNCHANGED. This integration NEVER requests a webhook change.
 
-INSTALL
-1. Back up current Github api/steadfast.mjs; upload the TWO .mjs files inside /api/.
-   GitHub browser upload does not unpack ZIP. Extract locally first. Commit.
-2. In the correct EXISTING Supabase database, carefully review/run
-   supabase/steadfast.sql. Requires schema public.jf_profiles with columns
-   id, active, deleted_at, role and roles owner/admin/creator; inspect your real
-   project and CHANGE the auth logic before enabling if different.
-3. Vercel Production variables (DO NOT paste their values in chat):
-   STEADFAST_API_KEY, STEADFAST_SECRET_KEY
-   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY,
-   SUPABASE_SERVICE_ROLE_KEY
-   STEADFAST_WEBHOOK_TOKEN (random high entropy 32+ character value)
-   STEADFAST_ENABLE_BOOKING=false   (default/off; set true ONLY after review)
-   Redeploy after variable changes.
-4. Existing status example: POST /api/steadfast
-   Authorization: Bearer <signed-in Supabase access token>
-   Content-Type: application/json
-   {"action":"status","by":"invoice","value":"INV-123"}
-5. Booking example (LIVE COURIER OPERATION, requires enable flag):
-   {"action":"book","invoice":"INV-123","recipient_name":"Customer",
-   "recipient_phone":"01712345678","recipient_address":"Full address","cod_amount":500}
-   It creates real consignments. Never submit test/fake bookings.
-   Invoice reservation prevents automatic duplicates. In uncertain cases reconcile
-   against Steadfast dashboard manually; do not retry same invoice automatically.
-6. Saved webhook HISTORY example: {"action":"history","invoice":"INV-123"}
-   THIS IS STORED WEBHOOK EVENTS, NOT STEADFAST CUSTOMER HISTORY ENDPOINT.
-7. Potential webhook URL, ONLY if Steadfast supports POST JSON matching body:
-   https://YOUR-DOMAIN/api/steadfast-webhook?token=LONG_RANDOM_WEBHOOK_TOKEN
-   Prefer provider-supported signed header authentication where available.
-   Verify actual webhook format and authentication in merchant documentation
-   BEFORE configuring; if Steadfast requires different payload, adapt code first.
-   Query tokens can appear in access logs; treat as secrets. Rotate if leaked.
+1. Backup your existing repository files. Do not replace existing vercel.json.
+2. Run supabase/polling_migration.sql in your EXISTING JioFlow Supabase SQL Editor.
+3. GitHub: upload api/steadfast-poll.mjs into root /api, and upload
+   .github/workflows/steadfast-status-poll.yml into the exact nested path.
+4. Vercel Production -> Environment Variables: add Secret JIOFLOW_POLL_SECRET
+   with a NEW strong random 32+ byte/character value. Redeploy.
+5. GitHub Repo -> Settings -> Secrets and variables -> Actions -> New repository secret:
+   JIOFLOW_POLL_SECRET = SAME VALUE as Vercel variable above.
+   JIOFLOW_POLL_URL = https://YOUR_ACTUAL_WORKING_DOMAIN/api/steadfast-poll
+   (two GitHub secrets, URL may alternatively be a variable if workflow adapted).
+6. GitHub -> Actions -> JioFlow Steadfast Status Poll -> enable workflow if prompted.
+   Choose Run workflow for manual verification at the END, as requested.
+7. The workflow runs every 30 minutes according to cron but GitHub Actions
+   scheduled executions can be delayed or occasionally skipped.
+8. Vercel Hobby cron limits do not affect this externally initiated function call.
+9. Existing STEADFAST_API_KEY, STEADFAST_SECRET_KEY, SUPABASE_URL and
+   SUPABASE_SERVICE_ROLE_KEY must exist in Production.
 
-NOT INCLUDED / LIMITATIONS
-- Existing JioFlow Order Management UI wiring (requires actual components and database schema).
-- Automatic changes to your existing order status (requires confirmed CRM table,
-  mapping from Steadfast delivery_status, and idempotency design).
-- Steadfast's separate customer history endpoint (no verified specification).
-- Real-world connectivity verification (user requested verification at end).
-- Courier cancellation/rebooking, tracking timeline, bulk booking, credentials rotation.
-
-SAFETY
-Review and test the existing account permissions and database migrations in staging
-before enabling live booking or webhook. Credentials are only used in backend.
+SCOPE & LIMITATIONS
+- Only rows in jf_steadfast_bookings with state=booked and consignment_id
+  will be checked. If orders are not linked into this table: 0 are checked.
+- At most 20 rows per invocation. For higher scale add pagination and rate-limit handling.
+- Completed statuses (delivered/cancelled/partial_delivered) are skipped.
+- Saves delivery_status into jf_steadfast_bookings ONLY. Does not automatically
+  alter your existing JioFlow orders UI or main orders table. To achieve that,
+  we need real order table columns and mapping, followed by guarded deployment.
+- DO NOT use polling to infer fraud/phone history. That's a separate endpoint.
+- No changes to Ecom webhook, Ecom token, or Steadfast merchant callback URL.
+- DO NOT enable live parcel booking in Vercel until security and data mapping verified.
+- Do not paste tokens into screenshots/chats.
+- JioFlow site was previously reported BLANK: confirm the website is working
+  and Vercel deployments are green before activating the scheduler.
