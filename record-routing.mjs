@@ -1,5 +1,5 @@
 export function recordStatus(value='all'){
- const key=String(value||'all').toLowerCase().replaceAll(' ','_');return ({pendingqueue:'pending','due_today':'callbacks',overdue:'callbacks','not_booked':'ready_to_book','ready_to_book':'ready_to_book','call_back':'callbacks',attempted:'attempted',notattempted:'not_attempted'})[key]||key;
+ const key=String(value||'all').toLowerCase().replaceAll(' ','_');return ({complete:'completed',notattempted:'not_attempted',pendingqueue:'pending','due_today':'callbacks',overdue:'callbacks','not_booked':'ready_to_book','ready_to_book':'ready_to_book','call_back':'callback',attempted:'attempted',notattempted:'not_attempted'})[key]||key;
 }
 export function recordTarget(action,section='dashboard'){
  const {name,args=[]}=action||{};
@@ -16,10 +16,12 @@ export function recordTarget(action,section='dashboard'){
 }
 export function summaryTarget(label,section='dashboard'){
  const name=String(label||'').toLowerCase();
+ const customerStatus={'all customers':'all','total customers':'all','assigned':'assigned','unassigned':'unassigned','completed':'completed','complete':'completed','pending follow-up':'pending','pending follow-ups':'pending','permanent clients':'permanent','connected':'connected','not connected':'not_connected','positive':'positive','negative':'negative','intermediate':'intermediate','attempted':'attempted','not attempted':'not_attempted','never attempted':'not_attempted','failed':'failed','no answer':'no_answer','busy':'busy','due callbacks':'callbacks','overdue callbacks':'callbacks','purchase rate':'buyers'}[name];
+ if(customerStatus&&!(['complete','completed'].includes(name)&&['orders','courier'].includes(section)))return {section:'followups',filters:{entity:'customers',status:customerStatus}};
  if(/cod|delivery.*return/.test(name))return {section:'courier',filters:{entity:'orders',status:name.includes('cod')?'delivered':'all'}};
  if(/profit|cost|margin/.test(name))return {section:'profit',filters:{entity:'orders',status:'confirmed'}};
  if(/agent|user/.test(name))return {section:'agentreports',filters:{entity:'customers',status:'all'}};
  const customers=/customer|assign|callback|connected|positive|negative|intermediate|follow|purchase|permanent/.test(name)||name==='completed'&&!['orders','courier'].includes(section);
- const status=name.includes('unassigned')?'unassigned':name==='completed'?(customers?'completed':'delivered'):name.includes('confirmed')?'confirmed':name.includes('pending')?'pending':name.includes('callback')?'callbacks':name.includes('not connected')?'not_connected':name==='connected'?'connected':name.includes('permanent')?'permanent':name==='assigned'?'assigned':'all';
+ const status=name==='imported'?'imported':name.includes('unassigned')?'unassigned':name==='completed'?(customers?'completed':'delivered'):name.includes('confirmed')?'confirmed':name.includes('pending')?'pending':name.includes('callback')?'callbacks':name.includes('not connected')?'not_connected':name==='connected'?'connected':name.includes('permanent')?'permanent':name==='assigned'?'assigned':'all';
  return {section:customers?'followups':'orders',filters:{entity:customers?'customers':'orders',status}};
 }

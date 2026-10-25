@@ -302,5 +302,16 @@ const labelCustomer=inlineRows.rows[0].id;await q('select public.jf_workspace_to
 inlineRows=(await q('select public.jf_workspace_page($1,$2,$3,0) v',[toolkitShop,'orders',{status:'confirmed',product_id:financeProduct}]))[0].v;assert.equal(inlineRows.total,1);assert.equal(inlineRows.rows[0].id,financeOrder);
 await identity(outsider);assert.equal((await q('select public.jf_workspace_page($1,$2,$3,0) v',[toolkitShop,'customers',{status:'all'}]))[0].v.total,0);
 console.log('020 passed: full inline panels retain tenant isolation, custom labels/tags/source/product filters and latest notes.');
+await db.exec('reset role');await db.exec(await readFile(new URL('./supabase/migrations/021_inline_tab_counts.sql',import.meta.url),'utf8'));
+await identity(creator);
+const counted=(await q("select public.jf_workspace_page($1,'customers','{\"status\":\"unassigned\"}'::jsonb,0) as v",[shop]))[0].v;
+assert.equal(counted.counts.unassigned,counted.total);assert.ok(counted.counts.all>=counted.total);assert.equal(counted.counts.assigned+counted.counts.unassigned,counted.counts.all);
+const customCounts=(await q("select public.jf_workspace_page($1,'customers','{}'::jsonb,0) as v",[toolkitShop]))[0].v;assert.equal(customCounts.counts.interested_again,1);
+const orderCounts=(await q("select public.jf_workspace_page($1,'orders','{\"status\":\"all\"}'::jsonb,0) as v",[shop]))[0].v;
+assert.equal(orderCounts.counts.all,orderCounts.total);
+const importedRows=(await q("select public.jf_workspace_page($1,'orders','{\"status\":\"imported\"}'::jsonb,0) as v",[shop]))[0].v;assert.equal(importedRows.counts.imported,importedRows.total);assert.ok(importedRows.rows.every(r=>r.is_imported));assert.equal(orderCounts.counts.draft+orderCounts.counts.cancelled+orderCounts.counts.confirmed,orderCounts.total);
+await identity(owner2);const isolatedCounts=(await q("select public.jf_workspace_page($1,'customers','{}'::jsonb,0) as v",[shop]))[0].v;assert.equal(isolatedCounts.counts.all,0);
+console.log('Inline tab counts passed: all-status totals, selected-list consistency and cross-business RLS isolation.');
+
 await db.close();console.log('Operational checks passed: product CRUD/activation/cost privacy, normalized phone upserts, one follow-up, notes/history, callback validation, server-side filtering and denied Agent/anonymous writes.');
 console.log('Database checks passed: all migrations execute; Creator/Owner/Admin/Agent hierarchy, same-shop profile reads, tenant foreign keys, duplicate phone/follow-up constraints, Agent data blockade, Admin finance permission, inactive rejection and anonymous denial.');

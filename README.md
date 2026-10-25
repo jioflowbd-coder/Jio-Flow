@@ -1,3 +1,7 @@
+Current branding update: RELEASE-026.md; includes all performance and tab count changes from RELEASE-025.md.
+
+Current update: see RELEASE-025.md for faster navigation, stable lists, status tab counts and box connections.
+
 Latest cumulative update: RELEASE-024.md. Install the new Database 024 bundle after the previous Database 022 update.
 
 Latest update: RELEASE-023.md. Apply migration 019 after the previous Database 022 update.

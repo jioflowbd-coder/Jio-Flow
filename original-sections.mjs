@@ -21,15 +21,18 @@ export function createOriginalSections({client,navigate,onLiveAction=()=>false,o
   root.querySelectorAll('[data-original-rows]').forEach(input=>input.onchange=()=>update('rows',input.value));
   root.querySelectorAll('[data-original-chart]').forEach(b=>b.onclick=()=>update('chart',b.dataset.originalChart));
   root.querySelectorAll('[data-original-tab]').forEach(b=>b.onclick=()=>['orders','followups','customers','permanent','courier'].includes(viewContext?.section)?navigate(viewContext.section,{...(viewContext.recordFilter||{}),entity:['orders','courier'].includes(viewContext.section)?'orders':'customers',status:recordStatus(b.dataset.originalTab)}):update('tab',b.dataset.originalTab));
-  root.querySelectorAll('[data-original-filters]').forEach(b=>b.onclick=()=>update('filters'));
+  root.querySelectorAll('[data-original-filters]').forEach(b=>b.onclick=()=>{const panel=root.querySelector('.filter-panel');if(panel&&root.querySelector('[data-live-record-panel]')){panel.hidden=!panel.hidden;b.setAttribute('aria-expanded',String(!panel.hidden));return}update('filters')});
   root.querySelectorAll('[data-original-search]').forEach(input=>{input.onchange=()=>update('search',input.value);input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();update('search',input.value)}}});
   root.querySelectorAll('[data-original-form]').forEach(form=>form.onsubmit=e=>e.preventDefault());onReady(root,viewContext);bindCustomerImport(root,viewContext,client);
  }
- return {supports:section=>supported.has(section),clear(){generation++},async mount({root,section,shop,profile,shops,profiles,members,accountRole,canFinance,recordFilter=null}){
+ return {supports:section=>supported.has(section),clear(){generation++},async mount({root,section,shop,profile,shops,profiles,members,accountRole,canFinance,recordFilter=null,progressive=false}){
   const current=++generation;if(!supported.has(section))return;
   if(!shop&&!['profile','platformsettings'].includes(section)){root.innerHTML='<section class="card"><h2>Select a business</h2><p>Select a shop above to open its original workspace screen.</p></section>';return}
-  root.innerHTML=loadingMarkup();
+  const directPanel=progressive&&(['orders','courier','customers','followups','permanent'].includes(section)||Boolean(recordFilter?.entity));
+  root.classList.add('page-enter');
   try{
+   if(directPanel){const original=bridge();if(!original)throw new Error('Screen assets could not be loaded. Refresh to retry.');viewContext={section,shop,profile,shops,profiles,members,records:{},accountRole,recordFilter};root.innerHTML=original.render(section,viewContext);root.querySelectorAll('.metric-tile,.insight-tile,.overview-tile').forEach(el=>{const value=el.querySelector('strong');if(value)value.textContent='—';const foot=el.querySelector('.metric-context');if(foot)foot.textContent='Updating totals…';const badge=el.querySelector('.change-badge');if(badge)badge.textContent='—'});bind(root);return}
+   root.innerHTML=loadingMarkup();
    let records={};if(shop&&!['settings','platformsettings','import','profile','shop'].includes(section)){
     const scoped='select=*&shop_id=eq.'+encodeURIComponent(shop.id);
     const [orders,products,customers]=await Promise.all([client.query('jf_orders',scoped+'&archived_at=is.null&order=created_at.desc&limit=50'),client.query('jf_products',scoped+'&archived_at=is.null&order=created_at.desc&limit=50'),client.query('jf_customers',scoped+'&archived_at=is.null&order=updated_at.desc&limit=50')]);
